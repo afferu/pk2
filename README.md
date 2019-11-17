@@ -3,6 +3,14 @@
 
 Original codebase fork.
 
+Goals:
+
+- Use platform independend build system
+- Translate the codebase
+- Modernize / rewrite codebase
+- Port it to platform independent multimedia framework
+- Provide auto documentation
+
 # License
 
 http://pistegamez.net/index.html
