@@ -1,172 +1,133 @@
-#include <stdlib.h>
-#include <stdio.h>
-#include <fstream.h>
-#include <iostream.h>
-#include <io.h>
-#include <fcntl.h>
-#include <windows.h> 
-
 #include "PisteLanguage.h"
 
-PisteLanguage::PisteLanguage()
-{
-	lue = LUE_SKIP;
+#include <fstream>
+#include <string>
+#include <stdexcept>
 
-	for (int i=0;i<MAX_TEKSTEJA;i++)
+namespace pe
+{
+	PisteLanguage::PisteLanguage()
+		: text_cache_{}
 	{
-		strcpy(tekstit[i],"");
-		strcpy(otsikot[i],"");
 	}
 
-}
-
-PisteLanguage::PisteLanguage(char *tiedosto)
-{
-	lue = LUE_SKIP;
-
-	for (int i=0;i<MAX_TEKSTEJA;i++)
+	PisteLanguage::PisteLanguage(StringViewT file_path)
+		: PisteLanguage()
 	{
-		strcpy(tekstit[i],"");
-		strcpy(otsikot[i],"");
+		if (!ReadFile(file_path))
+		{
+			throw std::runtime_error("Unable to read provided file!");
+		}
 	}
 
-	Lue_Tiedosto(tiedosto);
-}
-
-PisteLanguage::~PisteLanguage(){}
-
-bool PisteLanguage::Lue_Tiedosto(char *filename)
-{
-	
-	ifstream *tiedosto = new ifstream(filename, ios::in | ios::nocreate);
-
-	if (tiedosto->fail())
+	void PisteLanguage::ParseLine(const std::string_view line_to_parse)
 	{
-		delete (tiedosto);
+		static constexpr auto BEGIN_KEY = '*', BEGIN_VALUE = ':';
+
+		auto read_key_or_value{ [](auto& read_string, auto& current_iterator, auto end_iterator) {
+			while (current_iterator != end_iterator)
+			{
+				bool finish_reading{ false };
+				switch (*current_iterator)
+				{
+					case BEGIN_KEY:
+						finish_reading = true; //Repeated '*'
+					break;
+					case BEGIN_VALUE:
+						finish_reading = true; //Repeated ':'
+					break;
+					case '\t': break; //omit tab 
+					case '\v': break; //omit vert tab
+					default:
+						read_string += *current_iterator;
+						break;
+				}
+				if (finish_reading)
+				{
+					break;
+				}
+				else
+				{
+					current_iterator++;
+				}
+			}
+		} };
+
+		std::string key_string{};
+		std::string value_string{};
+
+		auto ch_iterator{ line_to_parse.begin() };
+		auto end_iterator{ line_to_parse.end() };
+
+		while (ch_iterator != end_iterator)
+		{
+			switch (*ch_iterator)
+			{
+			case BEGIN_KEY:
+			{
+				read_key_or_value(key_string, ++ch_iterator, end_iterator);
+			}
+			break;
+			case BEGIN_VALUE:
+			{
+				read_key_or_value(value_string, ++ch_iterator, end_iterator);
+			}
+			break;
+			default:
+			{
+				ch_iterator++;
+			}
+			break;
+			}
+		}
+
+		//1. Iterate string of characters until the end
+		//2. If '*' concat key_string until you'll find '*' or ':', ignore '\t' and '\v'
+		//3. If ':' concat value_string until you'll find '*' or ':', ignore '\t' and '\v'
+		//4. Advance to the next character
+
+		//The following line:
+		//*first*part: : STRI:NG_TEST*:
+		//*(first)*(part):( ):( STRI):(NG_TEST)*():()
+		//Will be read as: key*(firstpart) value:(  STRING_TEST)
+
+		if (!key_string.empty() && !value_string.empty())
+		{
+			text_cache_.emplace(key_string, value_string);
+		}
+	}
+
+	bool PisteLanguage::ReadFile(StringViewT file_path)
+	{
+		if (std::ifstream lang_file(file_path.data(), std::ios::in); lang_file)
+		{
+			text_cache_.clear();
+			for (StringT line{}; std::getline(lang_file, line);)
+			{
+				ParseLine(line);
+			}
+			return true;
+		}
 		return false;
 	}
 
-	for (int i=0;i<MAX_TEKSTEJA;i++)
+	bool PisteLanguage::KeyExists(const StringViewT key_name) const
 	{
-		strcpy(tekstit[i],"");
-		strcpy(otsikot[i],"");
-	}	
-
-	char merkki;
-	int taulukko_index = 0;
-	int mjono_index = 0;
-	lue = LUE_SKIP;
-
-	bool jatka = true;
-
-	while(jatka && tiedosto->peek() != EOF)
-	{
-		//tiedosto->read(merkki, sizeof(merkki));
-	
-		merkki = tiedosto->get();
-
-		switch (merkki)
-		{
-		case EROTIN_1	:	if (lue == LUE_SKIP)
-							{
-								lue = LUE_OTSIKKO;
-								mjono_index = 0;
-							}
-							else
-							{
-								lue = LUE_SKIP;
-								taulukko_index++;
-							}
-							break;
-		
-		case EROTIN_2	:	if (lue == LUE_OTSIKKO)
-							{
-								lue = LUE_TEKSTI;
-								mjono_index = 0;
-								break;
-							}
-
-							if (lue == LUE_TEKSTI)
-							{
-								if (mjono_index < MAX_TEKSTIN_PITUUS)
-								{
-									tekstit[taulukko_index][mjono_index] = merkki;
-									tekstit[taulukko_index][mjono_index+1] = '\0';
-									mjono_index++;
-								}
-							}
-							break;
-		
-		case '\n'		:	if (lue != LUE_SKIP)
-							{
-								lue = LUE_SKIP;
-								taulukko_index++;
-							}
-							break;
-
-		case '\t'		:	break;
-		case '\v'		:	break;
-							
-		default			:	if (lue != LUE_SKIP && !(mjono_index == 0 && merkki == ' '))
-							{
-								if (lue == LUE_OTSIKKO)
-								{
-									if (mjono_index < MAX_OTSIKON_PITUUS)
-									{
-										//strcat(otsikot[taulukko_index],(char *)merkki);
-										otsikot[taulukko_index][mjono_index] = merkki;
-										otsikot[taulukko_index][mjono_index+1] = '\0';
-										mjono_index++;
-									}
-								}
-								if (lue == LUE_TEKSTI)
-								{
-									if (mjono_index < MAX_TEKSTIN_PITUUS)
-									{
-										//strcat(tekstit[taulukko_index],(char *)merkki);
-										tekstit[taulukko_index][mjono_index] = merkki;
-										tekstit[taulukko_index][mjono_index+1] = '\0';
-										mjono_index++;
-									}
-								}
-							}
-							break;
-							
-		}
-	
-		if (taulukko_index >= MAX_TEKSTEJA)
-			jatka = false;
+		return (text_cache_.count(key_name.data()) > size_t{ 0 });
 	}
 
-	delete tiedosto;
-	
-	return true;
-}
+	PisteLanguage::StringViewT PisteLanguage::GetText(const StringViewT key_name) const
+	{
+		return StringViewT{ text_cache_.at(key_name.data()) };
+	}
 
-int PisteLanguage::Hae_Indeksi(char *otsikko)
-{
-	int i=0;
+	PisteLanguage::StringT PisteLanguage::CopyText(const StringViewT key_name) const
+	{
+		return StringT{ text_cache_.at(key_name.data()) };;
+	}
 
-	while (i < MAX_TEKSTEJA && strcmp(otsikot[i],otsikko) != 0)
-		i++;
-
-	if (i == MAX_TEKSTEJA)
-		return -1;
-
-	return i;
-
-}
-
-char *PisteLanguage::Hae_Teksti(int index)
-{
-	if (index >= 0 && index < MAX_TEKSTEJA)
-		return tekstit[index];
-	else
-		return ".....";
-}
-
-void PisteLanguage::Korvaa_Teksti(int index, char *teksti)
-{
-	if (index >= 0 && index < MAX_TEKSTEJA)
-		strcpy(tekstit[index],teksti);
+	void PisteLanguage::ChangeText(const StringViewT key_name, const StringViewT new_text)
+	{
+		text_cache_[key_name.data()] = StringT{ new_text.data() };
+	}
 }

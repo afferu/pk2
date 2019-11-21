@@ -1,0 +1,16 @@
+TEST 
+------------------------------------------------------------------------------------
+*test_string_1:				STRING 1
+*test string 2:				String 2
+*third string test:			S t r 3
+
+TEST 2
+------------------------------------------------------------------------------------
+*test_string_3:				STRING 1
+*test string 4:				String 4
+*third string test 123:		S t r 3
+
+TEST 3 
+----------------------
+*asdads*zxcv: : STRI:NG_TEST*:
+:sdfs*afd:asdas: wvcxvcx*
